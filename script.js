@@ -29,10 +29,176 @@ if (!isTouchDevice) {
     requestAnimationFrame(animateRing);
   })();
 
-  document.querySelectorAll('a, button, .icon-item, .about-card, .contact-card, .timeline-card').forEach(el => {
+  document.querySelectorAll('a, button, summary, .icon-item, .about-card, .contact-card, .timeline-card, .project-card').forEach(el => {
     el.addEventListener('mouseenter', () => cursorRing.classList.add('cursor-ring--hover'));
     el.addEventListener('mouseleave', () => cursorRing.classList.remove('cursor-ring--hover'));
   });
+}
+
+// =============================================
+// APPARITION LETTRE PAR LETTRE (titre hero)
+// =============================================
+const heroTitle = document.querySelector('.hero-title');
+if (heroTitle && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  heroTitle.setAttribute('aria-label', heroTitle.textContent.replace(/\s+/g, ' ').trim());
+  let index = 0;
+  const splitLetters = (node) => {
+    [...node.childNodes].forEach(child => {
+      if (child.nodeType === Node.TEXT_NODE) {
+        const frag = document.createDocumentFragment();
+        [...child.textContent].forEach(ch => {
+          if (!ch.trim()) return;
+          const span = document.createElement('span');
+          span.className = 'char';
+          span.setAttribute('aria-hidden', 'true');
+          span.style.setProperty('--i', index++);
+          span.textContent = ch;
+          frag.appendChild(span);
+        });
+        child.replaceWith(frag);
+      } else if (child.nodeType === Node.ELEMENT_NODE && child.tagName !== 'BR') {
+        splitLetters(child);
+      }
+    });
+  };
+  splitLetters(heroTitle);
+
+  // Description et boutons apparaissent d'un bloc, une fois le nom entièrement apparu
+  const heroBlock = heroTitle.closest('.hero-content');
+  const titleEnd = 0.2 + (index - 1) * 0.03 + 0.5;
+  heroBlock.style.setProperty('--reveal-delay', `${titleEnd.toFixed(2)}s`);
+  heroBlock.classList.add('title-split');
+}
+
+// =============================================
+// TERMINAL « À PROPOS » : texte tapé au clavier
+// =============================================
+document.querySelectorAll('.terminal-body').forEach(terminalBody => {
+if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  const segments = [];
+  const walker = document.createTreeWalker(terminalBody, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (node.parentElement.classList.contains('terminal-prompt')) continue;
+    const full = node.textContent.replace(/\s+/g, ' ');
+    if (!full.trim()) continue;
+    segments.push({ node, full: segments.length === 0 ? full.trim() : full });
+  }
+  // Pause après la commande avant d'afficher le résultat
+  segments.splice(1, 0, { node: null, full: ' '.repeat(60) });
+
+  terminalBody.style.minHeight = terminalBody.offsetHeight + 'px';
+  segments.forEach(seg => { if (seg.node) seg.node.textContent = ''; });
+
+  const cursor = document.createElement('span');
+  cursor.className = 'term-cursor';
+  cursor.setAttribute('aria-hidden', 'true');
+  segments[0].node.after(cursor);
+
+  const total = segments.reduce((n, seg) => n + seg.full.length, 0);
+  const CHARS_PER_SECOND = 140;
+
+  const startTyping = () => {
+    const start = performance.now();
+    const tick = (now) => {
+      let remaining = Math.floor((now - start) / 1000 * CHARS_PER_SECOND);
+      let active = segments[0].node;
+      for (const seg of segments) {
+        const n = Math.max(0, Math.min(seg.full.length, remaining));
+        remaining -= seg.full.length;
+        if (!seg.node) continue;
+        seg.node.textContent = seg.full.slice(0, n);
+        if (n > 0) active = seg.node;
+      }
+      active.after(cursor);
+      if (now - start < total / CHARS_PER_SECOND * 1000) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  };
+
+  const termObserver = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting) {
+      termObserver.disconnect();
+      startTyping();
+    }
+  }, { threshold: 0.5 });
+  termObserver.observe(terminalBody);
+}
+});
+
+// =============================================
+// COMPTEURS ANIMÉS (cartes « À propos »)
+// =============================================
+const counters = document.querySelectorAll('[data-count]');
+if (counters.length && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  const format = (el, value) => { el.textContent = value + (el.dataset.suffix || ''); };
+  counters.forEach(el => format(el, 0));
+
+  const counterObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      const el = entry.target;
+      counterObserver.unobserve(el);
+      const target = Number(el.dataset.count);
+      const duration = 1400;
+      const start = performance.now();
+      const step = (now) => {
+        const progress = Math.min((now - start) / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        format(el, Math.round(target * eased));
+        if (progress < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+  }, { threshold: 0.6 });
+  counters.forEach(el => counterObserver.observe(el));
+}
+
+// =============================================
+// BOUTONS « COPIER » (contact)
+// =============================================
+document.querySelectorAll('.copy-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(btn.dataset.copy);
+    } catch {
+      // Contexte non sécurisé ou accès refusé : repli par sélection temporaire
+      const field = document.createElement('textarea');
+      field.value = btn.dataset.copy;
+      field.style.position = 'fixed';
+      field.style.opacity = '0';
+      document.body.appendChild(field);
+      field.select();
+      document.execCommand('copy');
+      field.remove();
+    }
+    const label = btn.textContent;
+    btn.textContent = 'Copié ✓';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = label;
+      btn.classList.remove('copied');
+    }, 1800);
+  });
+});
+
+// =============================================
+// LIGHTBOX (captures de projets)
+// =============================================
+const lightbox = document.getElementById('lightbox');
+if (lightbox) {
+  const lightboxImg = lightbox.querySelector('img');
+  document.querySelectorAll('.project-shot').forEach(shot => {
+    shot.addEventListener('click', () => {
+      const img = shot.querySelector('img');
+      lightboxImg.src = img.currentSrc || img.src;
+      lightboxImg.alt = img.alt;
+      lightbox.showModal();
+    });
+  });
+  lightbox.querySelector('.lightbox-close').addEventListener('click', () => lightbox.close());
+  // Un clic en dehors de l'image ferme la fenêtre
+  lightbox.addEventListener('click', (e) => { if (e.target === lightbox) lightbox.close(); });
 }
 
 // =============================================
@@ -109,7 +275,7 @@ navLinks.querySelectorAll('a').forEach(link => {
 });
 
 // Fade-up on scroll (Intersection Observer)
-const fadeEls = document.querySelectorAll('.fade-up');
+const fadeEls = document.querySelectorAll('.fade-up, .reveal');
 const observer = new IntersectionObserver(
   (entries) => {
     entries.forEach(entry => {
@@ -122,6 +288,24 @@ const observer = new IntersectionObserver(
   { threshold: 0.12 }
 );
 fadeEls.forEach(el => observer.observe(el));
+
+// Tuiles de compétences : décalage d'apparition par groupe
+document.querySelectorAll('.icon-grid').forEach(grid => {
+  [...grid.children].forEach((tile, i) => tile.style.setProperty('--i', i));
+});
+
+// Frise des expériences : la ligne se dessine au fil du scroll
+const timeline = document.querySelector('.timeline');
+if (timeline && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  const drawLine = () => {
+    const rect = timeline.getBoundingClientRect();
+    const progress = (window.innerHeight * 0.7 - rect.top) / rect.height;
+    timeline.style.setProperty('--line', Math.min(1, Math.max(0, progress)).toFixed(3));
+  };
+  drawLine();
+  window.addEventListener('scroll', drawLine, { passive: true });
+  window.addEventListener('resize', drawLine);
+}
 
 // Skill bars animation
 const skillFills = document.querySelectorAll('.skill-fill');

@@ -33,9 +33,17 @@ Site portfolio personnel présentant mon profil de développeur web full-stack (
 Aucune dépendance ni build n'est nécessaire : il suffit d'ouvrir `index.html` dans un navigateur, ou de servir le dossier avec un petit serveur statique :
 
 ```bash
-npx serve .
+make start
 ```
+
+Le site est alors disponible sur http://localhost:3000. Pour changer de port : `make start PORT=8080`.
 
 ## Déploiement
 
-Le site est déployé sur [Vercel](https://vercel.com/).
+Le site est déployé sur [Vercel](https://vercel.com/). Pour publier la version locale en production :
+
+```bash
+make deploy
+```
+
+Cela lance `vercel --prod` (le [CLI Vercel](https://vercel.com/docs/cli) doit être installé et connecté avec `vercel login`).
